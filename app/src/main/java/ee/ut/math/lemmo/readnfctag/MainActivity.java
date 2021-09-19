@@ -5,7 +5,8 @@ import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.nfc.tech.IsoDep;
 import android.os.Bundle;
-import android.util.Log;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -28,6 +29,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -153,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
         System.out.println(sb);
     }
 
-    public void process(IsoDep idCard, TextView textView) throws IOException, NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public void process(IsoDep idCard, String CAN, TextView textView) throws IOException, NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
 
         idCard.connect();
         byte[] response;
@@ -168,7 +170,7 @@ public class MainActivity extends AppCompatActivity {
         printResponseAPDU(response);
 
         byte[] encryptedNonce = Arrays.copyOfRange(response, 4, response.length - 2);
-        byte[] decryptedNonce = decryptNonce(encryptedNonce, "964842");
+        byte[] decryptedNonce = decryptNonce(encryptedNonce, CAN);
 
         ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
 
@@ -235,33 +237,44 @@ public class MainActivity extends AppCompatActivity {
             textView.setText(Boolean.toString(Hex.toHexString(response, 4, 8).equals(Hex.toHexString(mac, 0, 8))));
         }
 
+        idCard.close();
+
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        AtomicLong i = new AtomicLong(1);
+
         setContentView(R.layout.activity_main);
 
         TextView textView = findViewById(R.id.returnCode);
+        EditText editText = findViewById(R.id.CAN);
+        Button button = findViewById(R.id.button);
+        button.setOnClickListener(view -> {
 
-        Intent intent = getIntent();
+            Intent intent = getIntent();
 
-        if (intent.getAction().equals("android.nfc.action.TECH_DISCOVERED")) {
-            Log.i("App", "Found card.");
+            if (intent.getAction().equals("android.nfc.action.TECH_DISCOVERED")) {
 
-            Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
-            IsoDep idCard = IsoDep.get(tag);
+                textView.setText("Found card.");
 
-            try {
-                process(idCard, textView);
-            } catch (Exception e) {
-                e.printStackTrace();
+                Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+                IsoDep idCard = IsoDep.get(tag);
+
+                try {
+                    process(idCard, editText.getText().toString(), textView);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else {
+                textView.setText(String.format("%s: No card found.", i.getAndIncrement()));
             }
 
-        }
+        });
 
-        Log.i("App", "Done.");
+        System.out.println("Done.");
 
     }
 }

@@ -1826,6 +1826,7 @@ int drawable tooltip_frame_light 0x7f070090
 int id ALT 0x7f080000
 int id BOTTOM_END 0x7f080001
 int id BOTTOM_START 0x7f080002
+int id CAN 0x7f0801d4
 int id CTRL 0x7f080003
 int id FUNCTION 0x7f080004
 int id META 0x7f080005
@@ -1921,6 +1922,7 @@ int id bounce 0x7f08005e
 int id bounceBoth 0x7f08005f
 int id bounceEnd 0x7f080060
 int id bounceStart 0x7f080061
+int id button 0x7f0801d5
 int id buttonPanel 0x7f080062
 int id cache_measures 0x7f080063
 int id cancel_button 0x7f080064
