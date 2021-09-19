@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="ee.ut.math.lemmo.readIdNfc"
+    package="ee.ut.math.lemmo.readnfctag"
     android:versionCode="1"
     android:versionName="1.0" >
 
@@ -26,7 +26,7 @@
         android:testOnly="true"
         android:theme="@style/Theme.Readnfctag" >
         <activity
-            android:name="ee.ut.math.lemmo.readIdNfc.MainActivity"
+            android:name="ee.ut.math.lemmo.readnfctag.MainActivity"
             android:exported="true" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -35,11 +35,13 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.nfc.action.TECH_DISCOVERED" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <meta-data
                 android:name="android.nfc.action.TECH_DISCOVERED"
-                android:resource="@xml/filter_nfc" />
+                android:resource="@xml/tech" />
         </activity>
     </application>
 

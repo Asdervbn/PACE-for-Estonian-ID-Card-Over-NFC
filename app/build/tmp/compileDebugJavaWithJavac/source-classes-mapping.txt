@@ -1,4 +1,4 @@
-ee/ut/math/lemmo/readIdNfc/BuildConfig.java
- ee.ut.math.lemmo.readIdNfc.BuildConfig
-ee/ut/math/lemmo/readIdNfc/MainActivity.java
- ee.ut.math.lemmo.readIdNfc.MainActivity
+ee/ut/math/lemmo/readnfctag/BuildConfig.java
+ ee.ut.math.lemmo.readnfctag.BuildConfig
+ee/ut/math/lemmo/readnfctag/MainActivity.java
+ ee.ut.math.lemmo.readnfctag.MainActivity

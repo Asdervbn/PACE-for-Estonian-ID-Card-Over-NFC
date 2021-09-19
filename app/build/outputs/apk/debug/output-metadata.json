@@ -4,7 +4,7 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "ee.ut.math.lemmo.readIdNfc",
+  "applicationId": "ee.ut.math.lemmo.readnfctag",
   "variantName": "debug",
   "elements": [
     {

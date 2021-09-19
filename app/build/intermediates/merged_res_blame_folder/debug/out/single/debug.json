@@ -36,6 +36,10 @@
         "source": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\src\\main\\res\\layout\\activity_main.xml"
     },
     {
+        "merged": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\build\\intermediates\\merged_res\\debug\\xml_tech.xml.flat",
+        "source": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\src\\main\\res\\xml\\tech.xml"
+    },
+    {
         "merged": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\build\\intermediates\\merged_res\\debug\\mipmap-hdpi_ic_launcher_round.webp.flat",
         "source": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\src\\main\\res\\mipmap-hdpi\\ic_launcher_round.webp"
     },
@@ -58,9 +62,5 @@
     {
         "merged": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\build\\intermediates\\merged_res\\debug\\mipmap-anydpi-v26_ic_launcher_round.xml.flat",
         "source": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\src\\main\\res\\mipmap-anydpi-v26\\ic_launcher_round.xml"
-    },
-    {
-        "merged": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\build\\intermediates\\merged_res\\debug\\xml_filter_nfc.xml.flat",
-        "source": "C:\\Users\\user\\AndroidStudioProjects\\readnfctag\\app\\src\\main\\res\\xml\\filter_nfc.xml"
     }
 ]
