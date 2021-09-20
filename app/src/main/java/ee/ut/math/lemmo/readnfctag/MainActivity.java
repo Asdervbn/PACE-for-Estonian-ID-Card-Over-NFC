@@ -11,12 +11,20 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
 import org.bouncycastle.crypto.BlockCipher;
+import org.bouncycastle.crypto.KeyEncapsulation;
 import org.bouncycastle.crypto.engines.AESEngine;
+import org.bouncycastle.crypto.generators.ECKeyPairGenerator;
 import org.bouncycastle.crypto.macs.CMac;
+import org.bouncycastle.crypto.params.ECDomainParameters;
+import org.bouncycastle.crypto.params.ECKeyGenerationParameters;
+import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
+import org.bouncycastle.crypto.params.ECPublicKeyParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
+import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
 
@@ -52,8 +60,8 @@ public class MainActivity extends AppCompatActivity {
             (byte) 0x00,
     };
     byte[] personal = { // select personal data DF
-            (byte) 0x00, (byte) 0xA4, (byte) 0x01, (byte) 0x0C, (byte) 0x02,
-            (byte) 0x50, (byte) 0x00,
+            (byte) 0x0C, (byte) 0xA4, (byte) 0x01, (byte) 0x0C, (byte) 0x1D,
+            (byte) 0x87, (byte) 0x11, (byte) 0x01,
     };
     byte[] idcode = { // select identification code EF
             (byte) 0x00, (byte) 0xA4, (byte) 0x02, (byte) 0x0C, (byte) 0x02,
@@ -174,10 +182,11 @@ public class MainActivity extends AppCompatActivity {
 
         ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
 
-        byte[] bytes = new byte[32];
-        SecureRandom.getInstanceStrong().nextBytes(bytes);
-        BigInteger privateKey = new BigInteger(bytes).abs().add(BigInteger.ONE);
-        ECPoint publicKey = spec.getG().multiply(privateKey).normalize();
+        AsymmetricCipherKeyPair keyPair = generateKeyPair(spec.getCurve(), spec.getG(), spec.getN(), spec.getH(), spec.getSeed());
+        ECPrivateKeyParameters privateKeyParameters = (ECPrivateKeyParameters) keyPair.getPrivate();
+        ECPublicKeyParameters publicKeyParameters = (ECPublicKeyParameters) keyPair.getPublic();
+        BigInteger privateKey = privateKeyParameters.getD();
+        ECPoint publicKey = publicKeyParameters.getQ();
 
         byte[] GAMapNonce = createMapNonceAPDU(publicKey.getEncoded(false));
         response = idCard.transceive(GAMapNonce);
@@ -189,10 +198,11 @@ public class MainActivity extends AppCompatActivity {
         ECPoint sharedSecret = cardPublicKey.multiply(privateKey).normalize();
         ECPoint mappedECBasePoint = spec.getG().multiply(new BigInteger(decryptedNonce)).add(sharedSecret).normalize();
 
-        bytes = new byte[32];
-        SecureRandom.getInstanceStrong().nextBytes(bytes);
-        privateKey = new BigInteger(bytes).abs().add(BigInteger.ONE);
-        publicKey = mappedECBasePoint.multiply(privateKey).normalize();
+        keyPair = generateKeyPair(spec.getCurve(), mappedECBasePoint, spec.getN(), spec.getH(), spec.getSeed());
+        privateKeyParameters = (ECPrivateKeyParameters) keyPair.getPrivate();
+        publicKeyParameters = (ECPublicKeyParameters) keyPair.getPublic();
+        privateKey = privateKeyParameters.getD();
+        publicKey = publicKeyParameters.getQ();
 
         byte[] GAKeyAgreement = createKeyAgreementAPDU(publicKey.getEncoded(false));
         response = idCard.transceive(GAKeyAgreement);
@@ -229,15 +239,68 @@ public class MainActivity extends AppCompatActivity {
         System.arraycopy(publicKey.getEncoded(false), 0, dataForMAC, dataForMACIncomplete.length, 65);
         cmac.update(dataForMAC, 0, dataForMAC.length);
         cmac.doFinal(mac, 0);
-        System.out.println(Hex.toHexString(mac, 0, 8));
+//        System.out.println(Hex.toHexString(mac, 0, 8));
 
-        if (response.length == 2) {
-            textView.setText(Hex.toHexString(response));
-        } else {
-            textView.setText(Boolean.toString(Hex.toHexString(response, 4, 8).equals(Hex.toHexString(mac, 0, 8))));
-        }
+//        if (response.length == 2) {
+//            textView.setText(Hex.toHexString(response));
+//        } else {
+//            assert (Hex.toHexString(response, 4, 8).equals(Hex.toHexString(mac, 0, 8)));
+//            textView.setText("Hurray");
+//        }
+
+        byte[] sscByteArray = new byte[16];
+        sscByteArray[sscByteArray.length - 1] = (byte) 1;
+
+        byte[] selectPersonal = constructSecureChannelAPDU(new byte[0], Kenc, sscByteArray);
+
+
+        sscByteArray = Hex.decode("000000000000000000000000000000010CA4010C800000000000000000000000871101");
+        byte[] macdata = new byte[64];
+        System.arraycopy(sscByteArray, 0, macdata, 0, sscByteArray.length);
+        System.arraycopy(selectPersonal, 0, macdata, sscByteArray.length, selectPersonal.length);
+        macdata[sscByteArray.length + selectPersonal.length] = (byte) 0x80;
+        System.out.println(Hex.toHexString(macdata));
+        blockCipher = new AESEngine();
+        cmac = new CMac(blockCipher);
+        cmac.init(new KeyParameter(Kmac));
+        cmac.update(macdata, 0, macdata.length);
+        mac = new byte[cmac.getMacSize()];
+        cmac.doFinal(mac, 0);
+        mac = Arrays.copyOf(mac, 8);
+        byte[] asdf = new byte[personal.length + mac.length + selectPersonal.length + 3];
+        System.arraycopy(personal, 0, asdf, 0, personal.length);
+        System.arraycopy(selectPersonal, 0, asdf, personal.length, selectPersonal.length);
+        System.arraycopy(mac, 0, asdf, personal.length + selectPersonal.length + 2, mac.length);
+        System.arraycopy(new byte[]{(byte) 0x8E, (byte) 0x08}, 0, asdf, personal.length + selectPersonal.length, 2);
+        System.out.println(Hex.toHexString(asdf));
+
+        response = idCard.transceive(asdf);
+        printResponseAPDU(response);
 
         idCard.close();
+
+    }
+
+    private byte[] constructSecureChannelAPDU(byte[] message, byte[] Kenc, byte[] ssc) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidAlgorithmParameterException {
+        byte[] data = Hex.decode("50008000000000000000000000000000");
+
+        SecretKeySpec secretKeySpec = new SecretKeySpec(Kenc, "AES");
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+        byte[] iv = Arrays.copyOf(cipher.doFinal(ssc), 16);
+
+        cipher = Cipher.getInstance("AES/CBC/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, new IvParameterSpec(iv));
+        return cipher.doFinal(data);
+    }
+
+    private AsymmetricCipherKeyPair generateKeyPair(ECCurve curve, ECPoint g, BigInteger n, BigInteger h, byte[] seed) {
+
+        ECDomainParameters parameters = new ECDomainParameters(curve, g, n, h, seed);
+        ECKeyGenerationParameters generationParameters = new ECKeyGenerationParameters(parameters, new SecureRandom());
+        ECKeyPairGenerator generator = new ECKeyPairGenerator();
+        generator.init(generationParameters);
+        return generator.generateKeyPair();
 
     }
 
