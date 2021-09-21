@@ -76,7 +76,8 @@ public class MainActivity extends AppCompatActivity {
             (byte) 0x01, (byte) 0x1C,
     };
     byte[] read = { // read binary
-            (byte) 0x00, (byte) 0xB0, (byte) 0x00, (byte) 0x00, (byte) 0x00,
+            (byte) 0x0C, (byte) 0xB0, (byte) 0x00, (byte) 0x00, (byte) 0x0D,
+            (byte) 0x97, (byte) 0x01, (byte) 0x00, //(byte) 0x8E, (byte) 0x08,
     };
     byte[] MSESetAT = { // manage security environment: set authentication template
             (byte) 0x00, (byte) 0x22, (byte) 0xC1, (byte) 0xA4, (byte) 0x0F,
@@ -235,6 +236,7 @@ public class MainActivity extends AppCompatActivity {
         response = idCard.transceive(GAMutualAuthentication);
         printResponseAPDU(response);
 
+        // verify chip's MAC
         dataForMAC = Arrays.copyOf(dataForMACIncomplete, dataForMACIncomplete.length + 65);
         System.arraycopy(publicKey.getEncoded(false), 0, dataForMAC, dataForMACIncomplete.length, 65);
         cmac.update(dataForMAC, 0, dataForMAC.length);
@@ -250,39 +252,80 @@ public class MainActivity extends AppCompatActivity {
 
         byte[] sscByteArray = new byte[16];
         sscByteArray[sscByteArray.length - 1] = (byte) 1;
+        byte[] data = Hex.decode("50008000000000000000000000000000");
 
-        byte[] selectPersonal = constructSecureChannelAPDU(new byte[0], Kenc, sscByteArray);
-
-
-        sscByteArray = Hex.decode("000000000000000000000000000000010CA4010C800000000000000000000000871101");
-        byte[] macdata = new byte[64];
-        System.arraycopy(sscByteArray, 0, macdata, 0, sscByteArray.length);
-        System.arraycopy(selectPersonal, 0, macdata, sscByteArray.length, selectPersonal.length);
-        macdata[sscByteArray.length + selectPersonal.length] = (byte) 0x80;
-        System.out.println(Hex.toHexString(macdata));
-        blockCipher = new AESEngine();
-        cmac = new CMac(blockCipher);
-        cmac.init(new KeyParameter(Kmac));
-        cmac.update(macdata, 0, macdata.length);
-        mac = new byte[cmac.getMacSize()];
-        cmac.doFinal(mac, 0);
-        mac = Arrays.copyOf(mac, 8);
-        byte[] asdf = new byte[personal.length + mac.length + selectPersonal.length + 3];
-        System.arraycopy(personal, 0, asdf, 0, personal.length);
-        System.arraycopy(selectPersonal, 0, asdf, personal.length, selectPersonal.length);
-        System.arraycopy(mac, 0, asdf, personal.length + selectPersonal.length + 2, mac.length);
-        System.arraycopy(new byte[]{(byte) 0x8E, (byte) 0x08}, 0, asdf, personal.length + selectPersonal.length, 2);
-        System.out.println(Hex.toHexString(asdf));
-
-        response = idCard.transceive(asdf);
+        byte[] apdu = createSecureAPDU(data, Kenc, Kmac, sscByteArray, personal);
+//        System.out.println(Hex.toHexString(apdu));
+        response = idCard.transceive(apdu);
         printResponseAPDU(response);
+
+        sscByteArray[sscByteArray.length - 1] = (byte) 3;
+        data = Hex.decode("50068000000000000000000000000000");
+
+        apdu = createSecureAPDU(data, Kenc, Kmac, sscByteArray, personal);
+
+        response = idCard.transceive(apdu);
+        printResponseAPDU(response);
+
+        sscByteArray[sscByteArray.length - 1] = (byte) 5;
+        data = new byte[0];
+
+        apdu = createSecureAPDU(data, Kenc, Kmac, sscByteArray, read);
+
+        response = idCard.transceive(apdu);
+        printResponseAPDU(response);
+
+        sscByteArray[sscByteArray.length - 1] = (byte) 6;
+        byte[] decryptedData = decryptAPDUData(Arrays.copyOfRange(response, 3, 19), Kenc, sscByteArray);
+
+        textView.setText(new String(Arrays.copyOf(decryptedData, 11), StandardCharsets.US_ASCII));
 
         idCard.close();
 
     }
 
-    private byte[] constructSecureChannelAPDU(byte[] message, byte[] Kenc, byte[] ssc) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidAlgorithmParameterException {
-        byte[] data = Hex.decode("50008000000000000000000000000000");
+    private byte[] createSecureAPDU(byte[] data, byte[] Kenc, byte[] Kmac, byte[] sscByteArray, byte[] incomplete) throws NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+
+
+        byte[] encryptedData = new byte[0];
+
+        byte[] macData = new byte[data.length > 0 ? 64 : 48];
+        System.arraycopy(sscByteArray, 0, macData, 0, sscByteArray.length);
+        System.arraycopy(incomplete, 0, macData, sscByteArray.length, 4);
+        macData[sscByteArray.length + 4] = (byte) 0x80;
+        System.arraycopy(incomplete, 5, macData, sscByteArray.length * 2, 3);
+        if (data.length > 0) {
+            encryptedData = encryptAPDUData(data, Kenc, sscByteArray);
+            System.arraycopy(encryptedData, 0, macData, sscByteArray.length * 2 + 3, encryptedData.length);
+            macData[sscByteArray.length * 2 + 3 + encryptedData.length] = (byte) 0x80;
+        } else {
+            macData[sscByteArray.length * 2 + 3] = (byte) 0x80;
+        }
+        System.out.println(Hex.toHexString(macData));
+
+        AESEngine blockCipher = new AESEngine();
+        CMac cmac = new CMac(blockCipher);
+        cmac.init(new KeyParameter(Kmac));
+        cmac.update(macData, 0, macData.length);
+        byte[] mac = new byte[cmac.getMacSize()];
+        cmac.doFinal(mac, 0);
+        mac = Arrays.copyOf(mac, 8);
+
+        byte[] apdu = new byte[incomplete.length + mac.length + encryptedData.length + 3];
+        System.arraycopy(incomplete, 0, apdu, 0, incomplete.length);
+        if (encryptedData.length > 0) {
+            System.arraycopy(encryptedData, 0, apdu, incomplete.length, encryptedData.length);
+        }
+        apdu[incomplete.length + encryptedData.length] = (byte) 0x8E;
+        apdu[incomplete.length + encryptedData.length + 1] = (byte) 0x08;
+        System.arraycopy(mac, 0, apdu, incomplete.length + encryptedData.length + 2, mac.length);
+        System.out.println(Hex.toHexString(apdu));
+
+        return apdu;
+
+    }
+
+    private byte[] encryptAPDUData(byte[] data, byte[] Kenc, byte[] ssc) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidAlgorithmParameterException {
 
         SecretKeySpec secretKeySpec = new SecretKeySpec(Kenc, "AES");
         Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
@@ -291,6 +334,18 @@ public class MainActivity extends AppCompatActivity {
 
         cipher = Cipher.getInstance("AES/CBC/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, new IvParameterSpec(iv));
+        return cipher.doFinal(data);
+    }
+
+    private byte[] decryptAPDUData(byte[] data, byte[] Kenc, byte[] ssc) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidAlgorithmParameterException {
+
+        SecretKeySpec secretKeySpec = new SecretKeySpec(Kenc, "AES");
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+        byte[] iv = Arrays.copyOf(cipher.doFinal(ssc), 16);
+
+        cipher = Cipher.getInstance("AES/CBC/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, new IvParameterSpec(iv));
         return cipher.doFinal(data);
     }
 
