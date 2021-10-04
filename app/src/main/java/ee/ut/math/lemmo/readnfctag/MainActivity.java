@@ -35,9 +35,10 @@ public class MainActivity extends Activity {
                 button.setOnClickListener(view -> new Thread(() -> {
 
                     IsoDep idCard = IsoDep.get(discoveredTag);
-                    idCard.setTimeout(32768);
+                    idCard.setTimeout(32768); // after 10 failed PACE attempts there's a 30 second delay for nonce.
 
                     try {
+
                         Comms comms = new Comms();
                         idCard.connect();
                         byte[][] response = comms.PACE(idCard, editText.getText().toString());

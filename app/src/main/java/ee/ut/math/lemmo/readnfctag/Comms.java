@@ -88,7 +88,7 @@ public class Comms {
             (byte) 0x97, (byte) 0x01, (byte) 0x00,
     };
 
-    private byte ssc; // send sequence counter
+    private byte ssc; // Send sequence counter. Ok as long as the number of sent and received APDUs is <128.
 
     /**
      * Calculates the message authentication code
@@ -109,7 +109,7 @@ public class Comms {
     /**
      * Creates an application protocol data unit
      * @param template the byte array to be used as a template
-     * @param data the necessary data for completing the APDU
+     * @param data the data necessary for completing the APDU
      * @param extra the missing length of the APDU being created
      * @return the complete APDU
      */
@@ -149,7 +149,7 @@ public class Comms {
      * Attempts to use the PACE protocol to create a secure channel with an Estonian ID-card
      * @param idCard the IsoDep link to the card
      * @param CAN the card access number
-     * @return session keys if authentication succeeds, null otherwise
+     * @return session keys if authentication succeeds, otherwise null
      */
     public byte[][] PACE(IsoDep idCard, String CAN) throws IOException, NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
 
@@ -222,10 +222,9 @@ public class Comms {
 
     /**
      * Encrypts or decrypts the APDU data
-     *
-     * @param data      the array containing the data to be processed
-     * @param keyEnc    the cipher key
-     * @param mode      indicates whether to en- or decrypt the data
+     * @param data the array containing the data to be processed
+     * @param keyEnc the cipher key
+     * @param mode indicates whether to en- or decrypt the data
      * @return the result of encryption or decryption
      */
     private byte[] encryptDecryptData(byte[] data, byte[] keyEnc, int mode) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException, InvalidAlgorithmParameterException {
@@ -239,10 +238,10 @@ public class Comms {
     }
 
     /**
-     * Constructs APDUs suitable for the secure channel created by PACE.
+     * Constructs APDUs suitable for the secure channel.
      * @param data the data to be encrypted
      * @param keyEnc the encryption key
-     * @param keyMAC the key used for CMAC
+     * @param keyMAC the MAC key
      * @param incomplete the array to be used as a template
      * @return the constructed APDU
      */
@@ -282,11 +281,11 @@ public class Comms {
     }
 
     /**
-     * Gets contents of personal data file
+     * Gets contents of the personal data dedicated file
      * @param idCard link to the ID-card
      * @param keyEnc the encryption key
-     * @param keyMAC the key for CMAC
-     * @return array of String containing the initials and the personal identification code
+     * @param keyMAC the MAC key
+     * @return an array containing personal data
      */
     public byte[][] readPersonalData(IsoDep idCard, byte[] keyEnc, byte[] keyMAC) throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
 
