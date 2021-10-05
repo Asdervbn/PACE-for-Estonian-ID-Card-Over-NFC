@@ -4,14 +4,9 @@ import android.app.Activity;
 import android.nfc.NfcAdapter;
 import android.nfc.tech.IsoDep;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
-
-import org.bouncycastle.util.encoders.Hex;
-
-import java.util.Arrays;
 
 public class MainActivity extends Activity {
 
@@ -34,27 +29,15 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> textView.setText("Card found."));
                 button.setOnClickListener(view -> new Thread(() -> {
 
-                    IsoDep idCard = IsoDep.get(discoveredTag);
-                    idCard.setTimeout(32768); // after 10 failed PACE attempts there's a 30 second delay for nonce.
+                    try (IsoDep idCard = IsoDep.get(discoveredTag)) {
 
-                    try {
+                        idCard.setTimeout(Short.MAX_VALUE);
 
-                        Comms comms = new Comms();
-                        idCard.connect();
-                        byte[][] response = comms.PACE(idCard, editText.getText().toString());
-                        if (response == null) {
-                            runOnUiThread(() -> textView.setText("Invalid CAN."));
-                        } else {
-                            response = comms.readPersonalData(idCard, response[0], response[1]);
-                            for (byte[] datum : response) {
-                                Log.i("Data", new String(datum));
-                            }
-                            int indexOfTerminator = Hex.toHexString(response[1]).lastIndexOf("80") / 2;
-                            String firstName = new String(Arrays.copyOfRange(response[1], 0, indexOfTerminator));
-                            String welcome = String.format("Hello, %s.", firstName.charAt(0) + firstName.substring(1).toLowerCase());
-                            runOnUiThread(() -> textView.setText(welcome));
-                        }
-                        idCard.close();
+                        Comms comms = new Comms(idCard, editText.getText().toString());
+
+                        String[] response = comms.readPersonalData(new byte[]{2});
+                        String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
+                        runOnUiThread(() -> textView.setText(welcome));
 
                     } catch (Exception e) {
                         e.printStackTrace();
