@@ -1,7 +1,9 @@
 package ee.ut.math.lemmo.readnfctag;
 
 import android.app.Activity;
+import android.content.Context;
 import android.nfc.NfcAdapter;
+import android.nfc.NfcManager;
 import android.nfc.tech.IsoDep;
 import android.os.Bundle;
 import android.widget.Button;
@@ -22,7 +24,8 @@ public class MainActivity extends Activity {
 
         button.setOnClickListener(view -> textView.setText("Card not found."));
 
-        NfcAdapter nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+        NfcManager manager = (NfcManager) getSystemService(Context.NFC_SERVICE);
+        NfcAdapter nfcAdapter = manager.getDefaultAdapter();
         if (nfcAdapter != null) {
             nfcAdapter.enableReaderMode(this, discoveredTag -> {
 
@@ -38,6 +41,8 @@ public class MainActivity extends Activity {
                         String[] response = comms.readPersonalData(new byte[]{2});
                         String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
                         runOnUiThread(() -> textView.setText(welcome));
+
+//                        comms.getAuthenticationCertificate("0000");
 
                     } catch (Exception e) {
                         e.printStackTrace();

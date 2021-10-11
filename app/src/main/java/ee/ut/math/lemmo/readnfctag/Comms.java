@@ -30,7 +30,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public class Comms {
-    private static final byte[] master = { // select Main AID
+    private static final byte[] selectMain = { // select IAS-ECC
             0, -92, 4, 12, 16, -96, 0, 0, 0, 119, 1, 8, 0, 7, 0, 0, -2, 0, 0, 1, 0
     };
 
@@ -58,26 +58,34 @@ public class Comms {
             127, 73, 79, 6, 10, 4, 0, 127, 0, 7, 2, 2, 4, 2, 4, -122, 65
     };
 
-    private static final byte[] masterSec = {
+    private static final byte[] selectMainSecure = {
             12, -92, 4, 12, 45, -121, 33, 1
     };
 
-    private static final byte[] personal = { // select personal data DF
+    private static final byte[] IASECCAID = { // Identification Authentication Signature - European Citizen Card Application Identifier
+            -96, 0, 0, 0, 119, 1, 8, 0, 7, 0, 0, -2, 0, 0, 1, 0
+    };
+
+    private static final byte[] selectFile = {
             12, -92, 1, 12, 29, -121, 17, 1
     };
 
-    private static final byte[] read = { // read binary
+    private static final byte[] read = {
             12, -80, 0, 0, 13, -105, 1, 0
     };
 
-    private IsoDep idCard;
+    private static final byte[] verifyPIN1 = {
+            12, 32, 0, 1, 29, -121, 17, 1
+    };
+
+    private final IsoDep idCard;
     private final byte[] keyEnc;
     private final byte[] keyMAC;
     private byte ssc; // Send sequence counter.
 
     /**
      * The constructor performs PACE and stores the session keys
-     * 
+     *
      * @param idCard link to the card
      * @param CAN the card authentication number
      */
@@ -161,22 +169,16 @@ public class Comms {
      */
     private byte[][] PACE(String CAN) throws IOException, NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
 
-        // select the ECC applet on the chip
-//        long start = System.currentTimeMillis();
-        byte[] response = idCard.transceive(master);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
+        // select the IAS-ECC application on the chip
+        byte[] response = idCard.transceive(selectMain);
         Log.i("Select applet", Hex.toHexString(response));
 
         // initiate PACE
-//        start = System.currentTimeMillis();
         response = idCard.transceive(MSESetAT);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
         Log.i("Authentication template", Hex.toHexString(response));
 
         // get nonce
-//        start = System.currentTimeMillis();
         response = idCard.transceive(GAGetNonce);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
         Log.i("Get nonce", Hex.toHexString(response));
         byte[] decryptedNonce = decryptNonce(Arrays.copyOfRange(response, 4, response.length - 2), CAN);
 
@@ -185,9 +187,7 @@ public class Comms {
         BigInteger privateKey = new BigInteger(255, new SecureRandom()).add(BigInteger.ONE); // should be in [1, spec.getN()-1], but this is good enough for this application
         ECPoint publicKey = spec.getG().multiply(privateKey).normalize();
         byte[] APDU = createAPDU(GAMapNonceIncomplete, publicKey.getEncoded(false), 66);
-//        start = System.currentTimeMillis();
         response = idCard.transceive(APDU);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
         Log.i("Map nonce", Hex.toHexString(response));
         ECPoint cardPublicKey = spec.getCurve().decodePoint(Arrays.copyOfRange(response, 4, 69));
 
@@ -197,9 +197,7 @@ public class Comms {
         privateKey = new BigInteger(255, new SecureRandom()).add(BigInteger.ONE);
         publicKey = mappedECBasePoint.multiply(privateKey).normalize();
         APDU = createAPDU(GAKeyAgreementIncomplete, publicKey.getEncoded(false), 66);
-//        start = System.currentTimeMillis();
         response = idCard.transceive(APDU);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
         Log.i("Key agreement", Hex.toHexString(response));
         cardPublicKey = spec.getCurve().decodePoint(Arrays.copyOfRange(response, 4, 69));
 
@@ -211,9 +209,7 @@ public class Comms {
         APDU = createAPDU(dataForMACIncomplete, cardPublicKey.getEncoded(false), 65);
         byte[] MAC = getMAC(APDU, keyMAC);
         APDU = createAPDU(GAMutualAuthenticationIncomplete, MAC, 9);
-//        start = System.currentTimeMillis();
         response = idCard.transceive(APDU);
-//        Log.i("Duration", String.valueOf(System.currentTimeMillis() - start));
         Log.i("Mutual authentication", Hex.toHexString(response));
 
         // if the chip-side verification fails, crash and burn
@@ -227,6 +223,22 @@ public class Comms {
         }
         return new byte[][]{keyEnc, keyMAC};
 
+    }
+
+    /**
+     * Selects a file and reads its contents
+     *
+     * @param FID   file identifier of the required file
+     * @return decrypted file contents
+     */
+    private byte[] readFileByFID(byte[] FID) throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
+        byte [] APDU = createSecureAPDU(FID, selectFile);
+        byte [] response = idCard.transceive(APDU);
+        Log.i(String.format("Select FID %s", Hex.toHexString(FID)), Hex.toHexString(response));
+        APDU = createSecureAPDU(new byte[0], read);
+        response = idCard.transceive(APDU);
+        Log.i("Read binary", Hex.toHexString(response));
+        return encryptDecryptData(Arrays.copyOfRange(response, 3, 19), Cipher.DECRYPT_MODE);
     }
 
     /**
@@ -275,8 +287,7 @@ public class Comms {
         byte[] MAC = getMAC(macData, keyMAC);
 
         // construct the APDU using the encrypted data and the MAC
-        byte[] APDU = new byte[incomplete.length + encryptedData.length + MAC.length + 3];
-        System.arraycopy(incomplete, 0, APDU, 0, incomplete.length);
+        byte[] APDU = Arrays.copyOf(incomplete, incomplete.length + encryptedData.length + MAC.length + 3);
         if (encryptedData.length > 0) {
             System.arraycopy(encryptedData, 0, APDU, incomplete.length, encryptedData.length);
         }
@@ -289,54 +300,73 @@ public class Comms {
     }
 
     /**
+     * Selects the IAS ECC application, which provides the PKI functionalities, after a successful PACE.
+     *
+     * @return the chip's response
+     */
+    private byte[] selectIASECCApplication() throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
+        byte[] APDU = createSecureAPDU(IASECCAID, selectMainSecure);
+        byte[] response = idCard.transceive(APDU);
+        Log.i("Select the main application", Hex.toHexString(response));
+        return response;
+    }
+
+    /**
      * Gets the contents of the personal data dedicated file
      *
-     * @param FID   the last bytes of file identifiers being requested
-     * @return array containing the data strings
+     * @param lastBytes   the last bytes of the personal data file identifiers (0 < x < 16)
+     * @return array containing the corresponding data strings
      *
      */
-    public String[] readPersonalData(byte[] FID) throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
+    public String[] readPersonalData(byte[] lastBytes) throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
 
-        String[] personalData = new String[FID.length];
-        byte[] data;
-        byte[] APDU;
-        byte[] response;
+        String[] personalData = new String[lastBytes.length];
+        int stringIndex = 0;
 
-//        // select the application
-//        data = Arrays.copyOfRange(master, 5, 21);
-//        APDU = createSecureAPDU(data, keyEnc, keyMAC, masterSec);
-//        response = idCard.transceive(APDU);
-//        Log.i("Select application", Hex.toHexString(response));
+        // select the application
+        byte[] response = selectIASECCApplication();
 
         // select the personal data dedicated file
-        data = new byte[]{80, 0}; // personal data DF FID
-        APDU = createSecureAPDU(data, personal);
+        byte[] FID = new byte[]{80, 0}; // personal data dedicated file FID
+        byte[] APDU = createSecureAPDU(FID, selectFile);
         response = idCard.transceive(APDU);
         Log.i("Select personal data DF", Hex.toHexString(response));
 
-        // select and read the first 8 elementary files in the DF
-        for (int i = 0; i < FID.length; i++) {
+        // select and read the personal data elementary files
+        for (byte index : lastBytes) {
 
-            byte index = FID[i];
             if (index > 15 || index < 1) throw new RuntimeException("Invalid personal data FID.");
-
-            data[1] = index;
-            APDU = createSecureAPDU(data, personal);
-            response = idCard.transceive(APDU);
-            Log.i(String.format("Select EF 500%d", index), Hex.toHexString(response));
-
-            APDU = createSecureAPDU(new byte[0], read);
-            response = idCard.transceive(APDU);
-            Log.i(String.format("Read binary EF 500%d", index), Hex.toHexString(response));
+            FID[1] = index;
 
             // store the decrypted datum
-            byte[] raw = encryptDecryptData(Arrays.copyOfRange(response, 3, 19), Cipher.DECRYPT_MODE);
-            int indexOfTerminator = Hex.toHexString(raw).lastIndexOf("80") / 2;
-            personalData[i] = new String(Arrays.copyOfRange(raw, 0, indexOfTerminator));
+            response = readFileByFID(FID);
+            int indexOfTerminator = Hex.toHexString(response).lastIndexOf("80") / 2;
+            personalData[stringIndex++] = new String(Arrays.copyOfRange(response, 0, indexOfTerminator));
 
         }
 
         return personalData;
 
     }
+
+    private void verifyPIN1(byte[] PIN1) throws NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+        selectIASECCApplication();
+        byte[] paddedPIN1 = new byte[]{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+        System.arraycopy(PIN1, 0, paddedPIN1, 0, PIN1.length);
+        byte[] APDU = createSecureAPDU(paddedPIN1, verifyPIN1);
+        byte[] response = idCard.transceive(APDU);
+        Log.i("PIN1 verification", Hex.toHexString(response));
+        String sw1sw2 = Hex.toHexString(response, response.length - 2, 2);
+        if (!sw1sw2.equals("9000")) {
+            if (sw1sw2.equals("6983")) throw new RuntimeException("Invalid PIN1. Authentication method blocked.");
+            else throw new RuntimeException(String.format("Invalid PIN1. %c attempt%s left.", sw1sw2.charAt(sw1sw2.length() - 1), sw1sw2.endsWith("1") ? "" : "s"));
+        }
+    }
+
+//    public void getAuthenticationCertificate(String PIN1) throws NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+//
+//        verifyPIN1(PIN1.getBytes(StandardCharsets.UTF_8));
+//
+//    }
+
 }
