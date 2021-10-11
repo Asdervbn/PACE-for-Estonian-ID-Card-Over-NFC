@@ -38,11 +38,11 @@ public class MainActivity extends Activity {
 
                         Comms comms = new Comms(idCard, editText.getText().toString());
 
-                        String[] response = comms.readPersonalData(new byte[]{2});
-                        String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
-                        runOnUiThread(() -> textView.setText(welcome));
+//                        String[] response = comms.readPersonalData(new byte[]{2});
+//                        String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
+//                        runOnUiThread(() -> textView.setText(welcome));
 
-//                        comms.getAuthenticationCertificate("0000");
+                        comms.getAuthenticationCertificate("0000");
 
                     } catch (Exception e) {
                         e.printStackTrace();
