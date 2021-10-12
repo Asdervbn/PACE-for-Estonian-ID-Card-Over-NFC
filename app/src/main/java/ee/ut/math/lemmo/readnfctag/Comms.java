@@ -12,7 +12,6 @@ import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -22,8 +21,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
 
 import javax.crypto.BadPaddingException;
@@ -320,7 +317,6 @@ public class Comms {
      *
      * @param lastBytes   the last bytes of the personal data file identifiers (0 < x < 16)
      * @return array containing the corresponding data strings
-     *
      */
     public String[] readPersonalData(byte[] lastBytes) throws NoSuchPaddingException, InvalidKeyException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, IOException {
 
@@ -328,12 +324,12 @@ public class Comms {
         int stringIndex = 0;
 
         // select the application
-        byte[] response = selectIASECCApplication();
+        selectIASECCApplication();
 
         // select the personal data dedicated file
         byte[] FID = new byte[]{80, 0}; // personal data dedicated file FID
         byte[] APDU = createSecureAPDU(FID, selectFile);
-        response = idCard.transceive(APDU);
+        byte[] response = idCard.transceive(APDU);
         Log.i("Select personal data DF", Hex.toHexString(response));
 
         // select and read the personal data elementary files
@@ -353,17 +349,24 @@ public class Comms {
 
     }
 
-    private void verifyPIN1(byte[] PIN1) throws NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+    public void verifyPIN1(byte[] PIN1) throws NoSuchPaddingException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+
         selectIASECCApplication();
+
         byte[] paddedPIN1 = new byte[]{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
         System.arraycopy(PIN1, 0, paddedPIN1, 0, PIN1.length);
         byte[] APDU = createSecureAPDU(paddedPIN1, verifyPIN1);
         byte[] response = idCard.transceive(APDU);
         Log.i("PIN1 verification", Hex.toHexString(response));
-        String sw1sw2 = Hex.toHexString(response, response.length - 2, 2);
-        if (!sw1sw2.equals("9000")) {
-            if (sw1sw2.equals("6983")) throw new RuntimeException("Invalid PIN1. Authentication method blocked.");
-            else throw new RuntimeException(String.format("Invalid PIN1. %c attempt%s left.", sw1sw2.charAt(sw1sw2.length() - 1), sw1sw2.endsWith("1") ? "" : "s"));
+
+        byte sw1 = response[response.length - 2];
+        byte sw2 = response[response.length - 1];
+        if (sw1 != -112 || sw2 != 0) {
+            if (sw1 == 105 && sw2 == -125) {
+                throw new RuntimeException("Invalid PIN1. Authentication method blocked.");
+            } else {
+                throw new RuntimeException(String.format("Invalid PIN1. %d attempt%s left.", sw2 + 64, sw2 == -63 ? "" : "s"));
+            }
         }
     }
 
@@ -379,42 +382,35 @@ public class Comms {
         response = idCard.transceive(APDU);
         Log.i("Select certificate", Hex.toHexString(response));
 
-        byte[] responses = new byte[0];
+        byte[] certificate = new byte[0];
         byte[] readCert = Arrays.copyOf(read, read.length);
-        int indexOfTerminator = 0;
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 16; i++) {
 
-            readCert[2] = (byte) ((byte) i / 2);
-            readCert[3] = (byte) ((byte) (i % 2) * 25);
+            readCert[2] = (byte) (certificate.length / 256);
+            readCert[3] = (byte) (certificate.length % 256);
             APDU = createSecureAPDU(new byte[0], readCert);
             response = idCard.transceive(APDU);
-            Log.i("Read certificate part " + i, Hex.toHexString(response));
+            Log.i("Read certificate", Hex.toHexString(response));
 
-            if (!Hex.toHexString(response).substring(response.length * 2 - 4).equals("6b00")) {
-                byte[] decrypted = encryptDecryptData(Arrays.copyOfRange(response, 4, 244), Cipher.DECRYPT_MODE);
-                if (i % 2 == 0) {
-                    indexOfTerminator = Hex.toHexString(decrypted).lastIndexOf("80") / 2;
-                    responses = Arrays.copyOf(responses, responses.length + indexOfTerminator);
-                    System.arraycopy(decrypted, 0, responses, responses.length - indexOfTerminator, indexOfTerminator);
-//                    Log.i("Partial certificate #1", new String(Arrays.copyOf(decrypted, indexOfTerminator), StandardCharsets.ISO_8859_1));
-                } else {
-                    int newIndexOfTerminator = Hex.toHexString(decrypted).lastIndexOf("80") / 2;
-                    responses = Arrays.copyOf(responses, responses.length + 25 - indexOfTerminator + newIndexOfTerminator);
-                    System.arraycopy(decrypted, 0, responses, responses.length - newIndexOfTerminator, newIndexOfTerminator);
-//                    Log.i("Partial certificate #2", new String(Arrays.copyOfRange(decrypted, newIndexOfTerminator - 25, newIndexOfTerminator), StandardCharsets.ISO_8859_1));
-                }
-            } else {
-                break;
+            byte sw1 = response[response.length - 2];
+            byte sw2 = response[response.length - 1];
+            if (sw1 == 107 && sw2 == 0) {
+                throw new RuntimeException("Wrong read parameters.");
             }
 
+            int start = response[2] == 1 ? 3 : 4;
+            int end = start + (response[start - 2] + 256) % 256 - 1;
+            byte[] decrypted = encryptDecryptData(Arrays.copyOfRange(response, start, end), Cipher.DECRYPT_MODE);
+            int indexOfTerminator = Hex.toHexString(decrypted).lastIndexOf("80") / 2;
+            certificate = Arrays.copyOf(certificate, certificate.length + indexOfTerminator);
+            System.arraycopy(decrypted, 0, certificate, certificate.length - indexOfTerminator, indexOfTerminator);
+
+            if (sw1 == -112 && sw2 == 0) {
+                break;
+            }
         }
 
-        CertificateFactory certificateFactory = CertificateFactory.getInstance("X509");
-        X509Certificate certificate = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(responses));
-
-        Log.i("Certificate subject", certificate.getSubjectX500Principal().getName());
-
-        return responses;
+        return certificate;
 
     }
 }

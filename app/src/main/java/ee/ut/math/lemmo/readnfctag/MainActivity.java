@@ -6,9 +6,14 @@ import android.nfc.NfcAdapter;
 import android.nfc.NfcManager;
 import android.nfc.tech.IsoDep;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+
+import java.io.ByteArrayInputStream;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 public class MainActivity extends Activity {
 
@@ -42,7 +47,13 @@ public class MainActivity extends Activity {
 //                        String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
 //                        runOnUiThread(() -> textView.setText(welcome));
 
-                        comms.getAuthenticationCertificate();
+//                        long start = System.currentTimeMillis();
+                        byte[] response = comms.getAuthenticationCertificate();
+//                        Log.i("duration", String.valueOf(System.currentTimeMillis() - start));
+
+                        CertificateFactory certificateFactory = CertificateFactory.getInstance("X509");
+                        X509Certificate x509Certificate = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(response));
+                        Log.i("Certificate subject", x509Certificate.getSubjectX500Principal().getName());
 
                     } catch (Exception e) {
                         e.printStackTrace();
