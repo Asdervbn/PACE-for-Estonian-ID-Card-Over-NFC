@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
 //                        String welcome = String.format("Hello, %s.", response[0].charAt(0) + response[0].substring(1).toLowerCase());
 //                        runOnUiThread(() -> textView.setText(welcome));
 
-                        comms.getAuthenticationCertificate("0000");
+                        comms.getAuthenticationCertificate();
 
                     } catch (Exception e) {
                         e.printStackTrace();
